@@ -42,207 +42,153 @@ export default function EmotionChat({ onEmotionDetected }: EmotionChatProps) {
     setInputText('');
     setIsProcessing(true);
 
-    // GPT API Integration using OpenRouter with free model fallback
-    // Try free model first, then fallback to paid model
-    const API_KEY = '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';
+    // GPT API Integration using OpenRouter
+    // IMPORTANT: Get your free API key from https://openrouter.ai/keys
+    // Sign up for free account and create a new API key
+    const API_KEY = '';
     const API_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
     
-    // Free models to try (no credits required)
-    const freeModels = [
-      'meta-llama/llama-3.2-3b-instruct:free',
+    // Try models in order - prioritize free and reliable models
+    const modelsToTry = [
       'google/gemini-flash-1.5:free',
+      'meta-llama/llama-3.2-3b-instruct:free',
       'microsoft/phi-3-mini-128k-instruct:free',
+      'openai/gpt-3.5-turbo',
+      'anthropic/claude-3-haiku',
     ];
-    
-    // Fallback to paid model if free models don't work
-    const paidModel = 'openai/gpt-3.5-turbo';
-    
-    const modelsToTry = [...freeModels, paidModel];
-    let apiSuccess = false;
 
     try {
       for (const model of modelsToTry) {
-      try {
-        const response = await fetch(API_ENDPOINT, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${API_KEY}`,
-            'HTTP-Referer': window.location.origin || 'https://face-mood-chat.com',
-            'X-Title': 'Face Mood Chat',
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              {
-                role: 'system',
-                content: `You are a helpful and empathetic assistant. The user is currently feeling ${userEmotion}. Respond in a supportive and understanding manner. Keep your response concise (2-3 sentences).`,
-              },
-              {
-                role: 'user',
-                content: inputText,
-              },
-            ],
-            max_tokens: 150,
-            temperature: 0.7,
-          }),
-        });
+        try {
+          console.log(`Trying model: ${model}`);
+          
+          const response = await fetch(API_ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${API_KEY}`,
+              'HTTP-Referer': window.location.origin || '',
+              'X-Title': 'Face Mood Chat',
+            },
+            body: JSON.stringify({
+              model: model,
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are a helpful and knowledgeable assistant. Answer questions accurately and provide useful information. Be conversational and helpful.',
+                },
+                {
+                  role: 'user',
+                  content: inputText,
+                },
+              ],
+              max_tokens: 500,
+              temperature: 0.7,
+            }),
+          });
 
-        if (!response.ok) {
-          // If it's a 402 (payment required) and we're trying a free model, skip to next model
-          if (response.status === 402 && freeModels.includes(model)) {
-            console.log(`Model ${model} requires payment, trying next model...`);
+          console.log(`Response status: ${response.status}`);
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
+            console.error(`Model ${model} failed:`, errorMessage);
+            
+            // If it's a payment error for free model, try next
+            if (response.status === 402 && model.includes(':free')) {
+              console.log(`Free model requires payment, trying next...`);
+              continue;
+            }
+            
+            // If it's the last model, throw error
+            if (model === modelsToTry[modelsToTry.length - 1]) {
+              throw new Error(`All models failed. Last error: ${errorMessage}`);
+            }
+            
+            // Try next model
             continue;
           }
+
+          const data = await response.json();
+          console.log('API Response:', data);
           
-          let errorMessage = `Error ${response.status}`;
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.error?.message || errorData.message || errorMessage;
-            console.error('API Error Details:', errorData);
-          } catch (e) {
-            const textError = await response.text();
-            console.error('API Error Response:', textError);
+          // Extract response from different possible structures
+          let aiResponse = '';
+          if (data.choices?.[0]?.message?.content) {
+            aiResponse = data.choices[0].message.content;
+          } else if (data.message?.content) {
+            aiResponse = data.message.content;
+          } else if (data.content) {
+            aiResponse = data.content;
           }
+
+          if (!aiResponse || aiResponse.trim().length === 0) {
+            console.warn('Empty response, trying next model...');
+            continue;
+          }
+
+          // Success! Return the response
+          console.log('✅ API Success:', aiResponse.substring(0, 100));
+          const aiMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            text: aiResponse.trim(),
+            emotion: 'neutral',
+            isUser: false,
+            timestamp: Date.now(),
+          };
+          setMessages(prev => [...prev, aiMessage]);
+          return; // Success, exit
           
-          // If it's the last model, throw the error
+        } catch (error) {
+          console.error(`Error with ${model}:`, error);
+          
+          // If last model, throw to outer catch
           if (model === modelsToTry[modelsToTry.length - 1]) {
-            if (response.status === 401) {
-              throw new Error('API key is invalid or expired. Please check your API key.');
-            } else if (response.status === 429) {
-              throw new Error('Rate limit exceeded. Please try again later.');
-            } else if (response.status === 402) {
-              throw new Error('Insufficient credits. Please add credits to your account.');
-            } else {
-              throw new Error(`API error: ${errorMessage}`);
-            }
+            throw error;
           }
-          
-          // Otherwise, try next model
+          // Otherwise continue to next model
           continue;
         }
-
-        const data = await response.json();
-        
-        // Handle different response structures
-        let aiResponse = '';
-        if (data.choices && data.choices[0]?.message?.content) {
-          aiResponse = data.choices[0].message.content;
-        } else if (data.message?.content) {
-          aiResponse = data.message.content;
-        } else if (typeof data === 'string') {
-          aiResponse = data;
-        } else {
-          console.warn('Unexpected API response structure:', data);
-          aiResponse = `I understand you're feeling ${userEmotion}. How can I help you today?`;
-        }
-
-        // Success! Use this response
-        const aiMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          text: aiResponse.trim() || `I understand you're feeling ${userEmotion}. How can I help you?`,
-          emotion: 'neutral',
-          isUser: false,
-          timestamp: Date.now(),
-        };
-        setMessages(prev => [...prev, aiMessage]);
-        apiSuccess = true;
-        return; // Exit successfully
-        
-      } catch (error) {
-        // Try next model
-        console.log(`Error with model ${model}, trying next...`, error);
-        if (model === modelsToTry[modelsToTry.length - 1]) {
-          // Last model failed, will use fallback
-          break;
-        }
-        continue;
       }
-    }
     
-      // If we get here, all API models failed - use fallback response
-      if (!apiSuccess) {
-        // Fallback: Generate a contextual response based on emotion
-        const fallbackResponses: Record<EmotionType, string[]> = {
-      happy: [
-        "I'm so glad you're feeling happy! What's making you smile today?",
-        "That's wonderful! It's great to see you in such a positive mood!",
-        "Your happiness is contagious! I'd love to hear more about what's bringing you joy."
-      ],
-      sad: [
-        "I'm sorry you're feeling down. Would you like to talk about what's bothering you?",
-        "I understand this is a difficult time. Remember, it's okay to feel sad sometimes.",
-        "I'm here for you. Sometimes sharing what's on your mind can help."
-      ],
-      angry: [
-        "I can sense you're feeling frustrated. Let's take a moment to breathe.",
-        "It sounds like something is really bothering you. Would it help to talk about it?",
-        "I understand you're upset. Sometimes expressing what's making you angry can help."
-      ],
-      surprised: [
-        "Wow, something unexpected happened! I'd love to hear more about it.",
-        "That sounds surprising! What caught you off guard?",
-        "Something amazing must have happened! Tell me more!"
-      ],
-      fear: [
-        "I sense you might be feeling anxious or worried. What's on your mind?",
-        "It's okay to feel scared sometimes. Would you like to talk about what's worrying you?",
-        "I'm here to listen. Sometimes talking about our fears can help us feel better."
-      ],
-      disgust: [
-        "I understand something doesn't feel right. What's bothering you?",
-        "It sounds like something is really unpleasant. Would you like to talk about it?",
-        "I'm here to help. Sometimes expressing what we find distasteful can help."
-      ],
-      neutral: [
-        "I'm here to chat with you. How can I help you today?",
-        "What's on your mind? I'm listening.",
-        "I'm ready to talk. What would you like to discuss?"
-      ]
-    };
-    
-        const responses = fallbackResponses[userEmotion] || fallbackResponses.neutral;
-        const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-        
-        const aiMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          text: randomResponse,
-          emotion: 'neutral',
-          isUser: false,
-          timestamp: Date.now(),
-        };
-        setMessages(prev => [...prev, aiMessage]);
-      }
     } catch (error) {
-      console.error('Error calling GPT API:', error);
+      console.error('All API models failed:', error);
       
-      // More user-friendly error messages
-      let errorText = '';
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        errorText = 'Network error. Please check your internet connection.';
-      } else if (error instanceof Error) {
-        errorText = error.message;
-      } else {
-        errorText = 'Unable to connect to the AI service.';
-      }
+      // Show helpful error message to user
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      let userMessage = '';
       
-      // Show specific error messages for known issues
-      let displayMessage = '';
-      if (errorText.includes('API key') || errorText.includes('invalid') || errorText.includes('expired')) {
-        displayMessage = `I understand you're feeling ${userEmotion}. There's an issue with the API key - please check your OpenRouter account.`;
-      } else if (errorText.includes('credits') || errorText.includes('Insufficient')) {
-        displayMessage = `I understand you're feeling ${userEmotion}. Your OpenRouter account needs more credits. Please add credits to continue.`;
-      } else if (errorText.includes('Rate limit') || errorText.includes('429')) {
-        displayMessage = `I understand you're feeling ${userEmotion}. Too many requests - please try again in a moment.`;
-      } else if (errorText.includes('Network error')) {
-        displayMessage = `I understand you're feeling ${userEmotion}. Network connection issue - please check your internet.`;
+      if (errorMessage.includes('User not found') || errorMessage.includes('401') || errorMessage.includes('invalid')) {
+        userMessage = `❌ Your API key is invalid or expired. 
+
+To fix this:
+1. Go to https://openrouter.ai/keys
+2. Sign up for a free account (if you don't have one)
+3. Create a new API key
+4. Replace the API_KEY in src/components/EmotionChat.tsx (line 46)
+
+You'll get $5 free credits when you sign up!`;
+      } else if (errorMessage.includes('402') || errorMessage.includes('credits')) {
+        userMessage = `❌ Your OpenRouter account has no credits. 
+
+To fix this:
+1. Go to https://openrouter.ai/credits
+2. Add credits to your account
+3. Or use free models that don't require credits`;
+      } else if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
+        userMessage = `⏱️ Rate limit exceeded. Please wait a moment and try again.`;
       } else {
-        displayMessage = `I understand you're feeling ${userEmotion}. I'm having trouble connecting right now, but I'm here to help.`;
+        userMessage = `❌ Connection error: ${errorMessage}
+
+Please check:
+- Your internet connection
+- Your API key at https://openrouter.ai/keys
+- Browser console (F12) for more details`;
       }
       
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        text: displayMessage,
+        text: userMessage,
         emotion: 'neutral',
         isUser: false,
         timestamp: Date.now(),
