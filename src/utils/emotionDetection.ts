@@ -57,22 +57,90 @@ export async function detectFaceEmotion(videoElement: HTMLVideoElement): Promise
 }
 
 export function detectTextEmotion(text: string): EmotionType {
+  if (!text || text.trim().length === 0) return 'neutral';
+  
+  const lowerText = text.toLowerCase();
+  
+  // Emotion keyword lists
+  const happyKeywords = [
+    'happy', 'joy', 'joyful', 'excited', 'excitement', 'great', 'wonderful', 'awesome', 
+    'amazing', 'fantastic', 'excellent', 'love', 'loving', 'loved', 'like', 'liked',
+    'good', 'great', 'nice', 'fun', 'funny', 'laugh', 'laughing', 'smile', 'smiling',
+    'cheerful', 'glad', 'pleased', 'delighted', 'thrilled', 'haha', 'hahaha', 'yay', 
+    'yeah', 'yes', 'yea', 'cool', 'awesome', 'perfect', 'best', 'favorite', 'favourite'
+  ];
+  
+  const sadKeywords = [
+    'sad', 'sadness', 'unhappy', 'depressed', 'depression', 'down', 'upset', 'crying',
+    'cry', 'tears', 'tearful', 'lonely', 'loneliness', 'miss', 'missing', 'sorry',
+    'apologize', 'apology', 'disappointed', 'disappointment', 'hurt', 'hurting',
+    'pain', 'painful', 'broken', 'heartbroken', 'sorrow', 'sorrowful', 'grief', 'grieving'
+  ];
+  
+  const angryKeywords = [
+    'angry', 'anger', 'mad', 'annoyed', 'annoying', 'frustrated', 'frustration',
+    'furious', 'rage', 'raging', 'hate', 'hated', 'hating', 'hateful', 'disgusted',
+    'disgusting', 'disgust', 'irritated', 'irritating', 'pissed', 'pissed off',
+    'outraged', 'fuming', 'livid', 'enraged', 'hostile', 'aggressive', 'aggression'
+  ];
+  
+  const surprisedKeywords = [
+    'surprised', 'surprise', 'shocked', 'shocking', 'wow', 'whoa', 'amazing',
+    'unexpected', 'unbelievable', 'incredible', 'astonished', 'astonishing',
+    'stunned', 'stunning', 'speechless', 'omg', 'oh my god', 'what', 'really'
+  ];
+  
+  const fearKeywords = [
+    'fear', 'afraid', 'scared', 'scary', 'frightened', 'terrified', 'terrifying',
+    'worried', 'worry', 'worries', 'anxious', 'anxiety', 'nervous', 'nervousness',
+    'panic', 'panicking', 'panicked', 'horror', 'horrified', 'dread', 'dreadful',
+    'threat', 'threatening', 'danger', 'dangerous', 'unsafe', 'unsure', 'uncertain'
+  ];
+  
+  const disgustKeywords = [
+    'disgust', 'disgusted', 'disgusting', 'gross', 'grossed', 'eww', 'ew', 'yuck',
+    'yucky', 'nasty', 'nauseating', 'nauseous', 'revolting', 'repulsive', 'repulsed',
+    'sickening', 'sick', 'vile', 'vomit', 'puke', 'ugh', 'blech', 'ick'
+  ];
+  
+  // Check for emotion keywords first (more reliable)
+  // Count matches for each emotion
+  const emotionScores = {
+    happy: happyKeywords.filter(kw => lowerText.includes(kw)).length,
+    sad: sadKeywords.filter(kw => lowerText.includes(kw)).length,
+    angry: angryKeywords.filter(kw => lowerText.includes(kw)).length,
+    surprised: surprisedKeywords.filter(kw => lowerText.includes(kw)).length,
+    fear: fearKeywords.filter(kw => lowerText.includes(kw)).length,
+    disgust: disgustKeywords.filter(kw => lowerText.includes(kw)).length,
+    neutral: 0
+  };
+  
+  // Find emotion with highest keyword match count
+  const maxKeywordMatches = Math.max(...Object.values(emotionScores));
+  
+  if (maxKeywordMatches > 0) {
+    const detectedEmotion = Object.entries(emotionScores).find(
+      ([_, count]) => count === maxKeywordMatches
+    )?.[0] as EmotionType;
+    
+    if (detectedEmotion && detectedEmotion !== 'neutral') {
+      return detectedEmotion;
+    }
+  }
+  
+  // If no keywords match, use sentiment analysis with lower thresholds
   const result = sentiment.analyze(text);
   const score = result.score;
-
-  // Map sentiment score to emotions
-  if (score >= 3) return 'happy';
-  if (score <= -3) return 'sad';
-  if (score <= -5) return 'angry';
-  if (result.words.some((word: string) => 
-    ['wow', 'amazing', 'surprised', 'shocked', 'unexpected'].includes(word.toLowerCase())
-  )) return 'surprised';
-  if (result.words.some((word: string) => 
-    ['scared', 'afraid', 'terrified', 'fear', 'worried'].includes(word.toLowerCase())
-  )) return 'fear';
-  if (result.words.some((word: string) => 
-    ['gross', 'disgusting', 'eww', 'yuck'].includes(word.toLowerCase())
-  )) return 'disgust';
-
+  
+  // More sensitive thresholds
+  if (score >= 1) return 'happy';
+  if (score <= -2) return 'angry';
+  if (score <= -1) return 'sad';
+  if (score === 0 && result.words.length === 0) return 'neutral';
+  
+  // Check for positive/negative words in sentiment analysis
+  if (result.positive.length > result.negative.length) return 'happy';
+  if (result.negative.length > result.positive.length) return 'sad';
+  
   return 'neutral';
 }
