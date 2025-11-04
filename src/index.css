@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Neutral/Default State */
+    --background: 195 25% 97%;
+    --foreground: 195 15% 15%;
+    --card: 195 25% 100%;
+    --card-foreground: 195 15% 15%;
+    --primary: 195 65% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 195 20% 90%;
+    --secondary-foreground: 195 15% 15%;
+    --muted: 195 20% 92%;
+    --muted-foreground: 195 10% 45%;
+    --accent: 195 50% 85%;
+    --accent-foreground: 195 15% 15%;
+    --border: 195 20% 88%;
+    --input: 195 20% 88%;
+    --ring: 195 65% 55%;
+    --radius: 1rem;
+
+    /* Emotion-based color schemes */
+    --emotion-gradient: linear-gradient(135deg, hsl(195, 65%, 55%), hsl(195, 50%, 65%));
+    
+    /* Happy */
+    --happy-bg: 45 95% 85%;
+    --happy-fg: 35 85% 20%;
+    --happy-primary: 45 95% 60%;
+    --happy-gradient: linear-gradient(135deg, hsl(45, 95%, 70%), hsl(35, 90%, 65%));
+    --happy-glow: 0 8px 32px hsla(45, 95%, 60%, 0.4);
+    
+    /* Sad */
+    --sad-bg: 215 60% 85%;
+    --sad-fg: 215 20% 25%;
+    --sad-primary: 215 70% 55%;
+    --sad-gradient: linear-gradient(135deg, hsl(215, 70%, 65%), hsl(225, 60%, 60%));
+    --sad-glow: 0 8px 32px hsla(215, 70%, 55%, 0.3);
+    
+    /* Angry */
+    --angry-bg: 0 70% 85%;
+    --angry-fg: 0 50% 20%;
+    --angry-primary: 0 80% 60%;
+    --angry-gradient: linear-gradient(135deg, hsl(0, 80%, 65%), hsl(15, 75%, 60%));
+    --angry-glow: 0 8px 32px hsla(0, 80%, 60%, 0.4);
+    
+    /* Surprised */
+    --surprised-bg: 280 70% 85%;
+    --surprised-fg: 280 40% 20%;
+    --surprised-primary: 280 80% 65%;
+    --surprised-gradient: linear-gradient(135deg, hsl(280, 80%, 70%), hsl(260, 75%, 65%));
+    --surprised-glow: 0 8px 32px hsla(280, 80%, 65%, 0.4);
+    
+    /* Fear */
+    --fear-bg: 270 60% 75%;
+    --fear-fg: 270 20% 90%;
+    --fear-primary: 270 70% 55%;
+    --fear-gradient: linear-gradient(135deg, hsl(270, 70%, 60%), hsl(260, 65%, 55%));
+    --fear-glow: 0 8px 32px hsla(270, 70%, 55%, 0.5);
+    
+    /* Disgust */
+    --disgust-bg: 140 50% 85%;
+    --disgust-fg: 140 30% 20%;
+    --disgust-primary: 140 60% 50%;
+    --disgust-gradient: linear-gradient(135deg, hsl(140, 60%, 55%), hsl(130, 55%, 50%));
+    --disgust-glow: 0 8px 32px hsla(140, 60%, 50%, 0.3);
+
+    /* Animations */
+    --transition-smooth: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+
+  /* Emotion state classes */
+  .emotion-happy {
+    --background: var(--happy-bg);
+    --foreground: var(--happy-fg);
+    --primary: var(--happy-primary);
+    --emotion-gradient: var(--happy-gradient);
+    --card-shadow: var(--happy-glow);
+  }
+
+  .emotion-sad {
+    --background: var(--sad-bg);
+    --foreground: var(--sad-fg);
+    --primary: var(--sad-primary);
+    --emotion-gradient: var(--sad-gradient);
+    --card-shadow: var(--sad-glow);
+  }
+
+  .emotion-angry {
+    --background: var(--angry-bg);
+    --foreground: var(--angry-fg);
+    --primary: var(--angry-primary);
+    --emotion-gradient: var(--angry-gradient);
+    --card-shadow: var(--angry-glow);
+  }
+
+  .emotion-surprised {
+    --background: var(--surprised-bg);
+    --foreground: var(--surprised-fg);
+    --primary: var(--surprised-primary);
+    --emotion-gradient: var(--surprised-gradient);
+    --card-shadow: var(--surprised-glow);
+  }
+
+  .emotion-fear {
+    --background: var(--fear-bg);
+    --foreground: var(--fear-fg);
+    --primary: var(--fear-primary);
+    --emotion-gradient: var(--fear-gradient);
+    --card-shadow: var(--fear-glow);
+  }
+
+  .emotion-disgust {
+    --background: var(--disgust-bg);
+    --foreground: var(--disgust-fg);
+    --primary: var(--disgust-primary);
+    --emotion-gradient: var(--disgust-gradient);
+    --card-shadow: var(--disgust-glow);
+  }
+
+  .emotion-neutral {
+    /* Uses default root values */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Smooth emotion transitions */
+  .emotion-transition {
+    transition: var(--transition-smooth);
+  }
+
+  /* Card with emotion glow */
+  .emotion-card {
+    box-shadow: var(--card-shadow, 0 4px 16px rgba(0, 0, 0, 0.1));
+    transition: var(--transition-smooth);
+  }
+
+  /* Gradient background */
+  .emotion-gradient-bg {
+    background: var(--emotion-gradient);
+  }
+}
