@@ -1,63 +1,180 @@
-import * as faceapi from 'face-api.js';
-import Sentiment from 'sentiment';
-import type { EmotionType } from '@/types/emotion';
+import Sentiment from "sentiment";
+import type { EmotionType } from "@/types/emotion";
+
+// face-api.js is loaded via CDN in index.html and exposed as window.faceapi
+// We only use the types from the npm package; the runtime comes from the CDN bundle.
+import type * as FaceApiTypes from "face-api.js";
+
+declare global {
+  interface Window {
+    faceapi: typeof FaceApiTypes;
+  }
+}
+
+const faceapi = window.faceapi;
 
 const sentiment = new Sentiment();
 
 let modelsLoaded = false;
+let loadedFrom: string | null = null;
 
 export async function loadFaceDetectionModels() {
   if (modelsLoaded) return;
   
   try {
-    // Using CDN for easy setup. For better performance, download models to /public/models/
-    const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-    ]);
+    /**
+     * IMPORTANT:
+     * This project uses `face-api.js` (not the vladmandic fork). The recommended
+     * weights are the official face-api.js weights placed under `/public/models`.
+     *
+     * By default we load from `/models` (served by Vite from `/public/models`).
+     * You can override using Vite env: `VITE_FACEAPI_MODEL_URL`.
+     */
+    const localUrl =
+      (import.meta.env.VITE_FACEAPI_MODEL_URL as string | undefined) ?? "/models";
+
+    const tryLoad = async (url: string) => {
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(url),
+        faceapi.nets.faceExpressionNet.loadFromUri(url),
+      ]);
+      loadedFrom = url;
+    };
+
+    try {
+      await tryLoad(localUrl);
+    } catch (localError) {
+      // Fallback to official weights from GitHub (useful if models aren't downloaded yet).
+      // Prefer local models for performance + offline-friendly demos.
+      const fallbackUrl =
+        "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights";
+      await tryLoad(fallbackUrl);
+      // eslint-disable-next-line no-console
+      console.warn(
+        "Loaded face-api.js models from fallback URL. For best results, download weights into /public/models.",
+        { localUrl, fallbackUrl, localError }
+      );
+    }
+
+    // Small delay to ensure TensorFlow backend is fully initialized
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     modelsLoaded = true;
-    console.log('Face detection models loaded successfully');
+    // eslint-disable-next-line no-console
+    console.log("Face detection models loaded successfully", { loadedFrom });
   } catch (error) {
-    console.error('Error loading face detection models:', error);
+    // eslint-disable-next-line no-console
+    console.error("Error loading face detection models:", error);
     throw error;
   }
 }
 
 export async function detectFaceEmotion(videoElement: HTMLVideoElement): Promise<EmotionType> {
+  const detailed = await detectFaceEmotionDetailed(videoElement);
+  return detailed.emotion;
+}
+
+export async function detectFaceEmotionDetailed(
+  videoElement: HTMLVideoElement,
+  options?: {
+    /** TinyFaceDetector input size (higher = more accurate, slower) */
+    inputSize?: number;
+    /** Minimum face score threshold */
+    scoreThreshold?: number;
+    /** If dominant expression confidence is below this, return neutral */
+    emotionThreshold?: number;
+  }
+): Promise<{
+  emotion: EmotionType;
+  /** Dominant expression confidence (0..1) */
+  confidence: number;
+  /** Face detection confidence (0..1) */
+  faceScore: number;
+  /** Whether a face was detected in the frame */
+  faceDetected: boolean;
+  /** Raw expression probabilities (debug / research) */
+  expressions?: Record<string, number>;
+}> {
   try {
+    const inputSize = options?.inputSize ?? 224;
+    const scoreThreshold = options?.scoreThreshold ?? 0.4;
+    const emotionThreshold = options?.emotionThreshold ?? 0.45;
+
+    // Guard: if video isn't ready, avoid false "neutral".
+    if (videoElement.readyState < 2 || videoElement.videoWidth === 0) {
+      return {
+        emotion: "neutral",
+        confidence: 0,
+        faceScore: 0,
+        faceDetected: false,
+      };
+    }
+
     const detection = await faceapi
-      .detectSingleFace(videoElement, new faceapi.TinyFaceDetectorOptions())
+      .detectSingleFace(
+        videoElement,
+        new faceapi.TinyFaceDetectorOptions({ inputSize, scoreThreshold })
+      )
       .withFaceExpressions();
 
     if (!detection) {
-      return 'neutral';
+      return {
+        emotion: "neutral",
+        confidence: 0,
+        faceScore: 0,
+        faceDetected: false,
+      };
     }
 
     const expressions = detection.expressions;
     const emotions: Array<{ emotion: EmotionType; score: number }> = [
-      { emotion: 'happy', score: expressions.happy },
-      { emotion: 'sad', score: expressions.sad },
-      { emotion: 'angry', score: expressions.angry },
-      { emotion: 'surprised', score: expressions.surprised },
-      { emotion: 'fear', score: expressions.fearful },
-      { emotion: 'disgust', score: expressions.disgusted },
-      { emotion: 'neutral', score: expressions.neutral },
+      { emotion: "happy", score: expressions.happy },
+      { emotion: "sad", score: expressions.sad },
+      { emotion: "angry", score: expressions.angry },
+      { emotion: "surprised", score: expressions.surprised },
+      { emotion: "fear", score: expressions.fearful },
+      { emotion: "disgust", score: expressions.disgusted },
+      { emotion: "neutral", score: expressions.neutral },
     ];
 
     const dominantEmotion = emotions.reduce((prev, current) =>
       current.score > prev.score ? current : prev
     );
 
-    return dominantEmotion.emotion;
+    const faceScore = detection.detection?.score ?? 0;
+
+    // If expression confidence is too low, classify as neutral to reduce noise.
+    if (dominantEmotion.score < emotionThreshold) {
+      return {
+        emotion: "neutral",
+        confidence: dominantEmotion.score,
+        faceScore,
+        faceDetected: true,
+        expressions: expressions as unknown as Record<string, number>,
+      };
+    }
+
+    return {
+      emotion: dominantEmotion.emotion,
+      confidence: dominantEmotion.score,
+      faceScore,
+      faceDetected: true,
+      expressions: expressions as unknown as Record<string, number>,
+    };
   } catch (error) {
-    console.error('Error detecting face emotion:', error);
-    return 'neutral';
+    // eslint-disable-next-line no-console
+    console.error("Error detecting face emotion:", error);
+    return {
+      emotion: "neutral",
+      confidence: 0,
+      faceScore: 0,
+      faceDetected: false,
+    };
   }
 }
 
 export function detectTextEmotion(text: string): EmotionType {
-  if (!text || text.trim().length === 0) return 'neutral';
+  if (!text || text.trim().length === 0) return "neutral";
   
   const lowerText = text.toLowerCase();
   
@@ -123,7 +240,7 @@ export function detectTextEmotion(text: string): EmotionType {
       ([_, count]) => count === maxKeywordMatches
     )?.[0] as EmotionType;
     
-    if (detectedEmotion && detectedEmotion !== 'neutral') {
+    if (detectedEmotion && detectedEmotion !== "neutral") {
       return detectedEmotion;
     }
   }
@@ -133,14 +250,14 @@ export function detectTextEmotion(text: string): EmotionType {
   const score = result.score;
   
   // More sensitive thresholds
-  if (score >= 1) return 'happy';
-  if (score <= -2) return 'angry';
-  if (score <= -1) return 'sad';
-  if (score === 0 && result.words.length === 0) return 'neutral';
+  if (score >= 1) return "happy";
+  if (score <= -2) return "angry";
+  if (score <= -1) return "sad";
+  if (score === 0 && result.words.length === 0) return "neutral";
   
   // Check for positive/negative words in sentiment analysis
-  if (result.positive.length > result.negative.length) return 'happy';
-  if (result.negative.length > result.positive.length) return 'sad';
+  if (result.positive.length > result.negative.length) return "happy";
+  if (result.negative.length > result.positive.length) return "sad";
   
-  return 'neutral';
+  return "neutral";
 }

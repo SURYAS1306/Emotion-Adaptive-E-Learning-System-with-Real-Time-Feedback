@@ -8,9 +8,11 @@ import type { ChatMessage, EmotionType } from '@/types/emotion';
 
 interface EmotionChatProps {
   onEmotionDetected: (emotion: EmotionType) => void;
+  /** Compact layout for sidebar/quiz embedding */
+  compact?: boolean;
 }
 
-export default function EmotionChat({ onEmotionDetected }: EmotionChatProps) {
+export default function EmotionChat({ onEmotionDetected, compact = false }: EmotionChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -220,15 +222,15 @@ Please check:
   };
 
   return (
-    <Card className="flex flex-col h-[600px] emotion-card emotion-transition">
-      <div className="p-6 border-b">
-        <h2 className="text-2xl font-bold">Emotion-Aware Chat</h2>
+    <Card className={`flex flex-col emotion-card emotion-transition ${compact ? "h-[320px]" : "h-[600px]"}`}>
+      <div className={compact ? "p-4 border-b" : "p-6 border-b"}>
+        <h2 className={compact ? "text-lg font-bold" : "text-2xl font-bold"}>Emotion-Aware Chat</h2>
         <p className="text-sm text-muted-foreground mt-1">
           Your messages are analyzed for emotional context
         </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className={`flex-1 overflow-y-auto space-y-4 ${compact ? "p-4" : "p-6"}`}>
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <div className="text-center">
@@ -273,7 +275,7 @@ Please check:
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-6 border-t">
+      <div className={compact ? "p-4 border-t" : "p-6 border-t"}>
         <div className="flex space-x-2">
           <Input
             value={inputText}
@@ -292,11 +294,13 @@ Please check:
             <Send className="h-4 w-4" />
           </Button>
         </div>
+        {!compact && (
         <div className="mt-4 p-3 bg-muted rounded-lg">
           <p className="text-xs text-muted-foreground">
             <strong>AI Chat Integration:</strong> Powered by OpenRouter API with GPT models.
           </p>
         </div>
+        )}
       </div>
     </Card>
   );

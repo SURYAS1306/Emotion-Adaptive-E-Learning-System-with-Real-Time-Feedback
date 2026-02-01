@@ -1,23 +1,36 @@
-import { useState, useEffect } from 'react';
-import EmotionCamera from '@/components/EmotionCamera';
-import EmotionChat from '@/components/EmotionChat';
-import type { EmotionType } from '@/types/emotion';
+import { useEffect } from "react";
+import { Link } from "react-router-dom";
+import EmotionCamera from "@/components/EmotionCamera";
+import EmotionChat from "@/components/EmotionChat";
+import EmotionMetrics from "@/components/EmotionMetrics";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { BookOpen, Code2 } from "lucide-react";
+import { useEmotionContext } from "@/contexts/EmotionContext";
+import type { EmotionType } from "@/types/emotion";
+import { useEmotionStream } from "@/domain/emotion/useEmotionStream";
 
 const Index = () => {
-  const [currentEmotion, setCurrentEmotion] = useState<EmotionType>('neutral');
+  const { currentEmotion, setCurrentEmotion } = useEmotionContext();
+
+  const { state: unifiedEmotionState } = useEmotionStream(currentEmotion, {
+    faceStreamActive: true,
+    enableStreaming: true,
+    mode: "adaptive",
+  });
 
   useEffect(() => {
     const root = document.documentElement;
     
     // Remove all emotion classes
     root.classList.remove(
-      'emotion-happy',
-      'emotion-sad',
-      'emotion-angry',
-      'emotion-surprised',
-      'emotion-fear',
-      'emotion-disgust',
-      'emotion-neutral'
+      "emotion-happy",
+      "emotion-sad",
+      "emotion-angry",
+      "emotion-surprised",
+      "emotion-fear",
+      "emotion-disgust",
+      "emotion-neutral"
     );
     
     // Add current emotion class
@@ -41,12 +54,35 @@ const Index = () => {
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             An adaptive interface that responds to your emotions in real-time through facial recognition and text analysis
           </p>
-          <div className="mt-4 p-4 bg-card rounded-lg inline-block emotion-card">
-            <p className="text-sm font-medium">
-              Current Emotion: <span className="text-2xl font-bold capitalize ml-2">{currentEmotion}</span>
-            </p>
+          <div className="flex flex-wrap items-center justify-center gap-4 mt-4">
+            <div className="p-4 bg-card rounded-lg inline-block emotion-card">
+              <p className="text-sm font-medium">
+                Current Emotion: <span className="text-2xl font-bold capitalize ml-2">{currentEmotion}</span>
+              </p>
+            </div>
+            <Button asChild size="lg" className="emotion-transition">
+              <Link to="/learn" className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5" />
+                Learn & Quiz
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="outline" className="emotion-transition">
+              <Link to="/coding" className="flex items-center gap-2">
+                <Code2 className="h-5 w-5" />
+                Coding Test
+              </Link>
+            </Button>
           </div>
         </div>
+
+        {/* Emotion Metrics Dashboard */}
+        <Card className="p-6 emotion-card emotion-transition">
+          <EmotionMetrics
+            emotionState={unifiedEmotionState}
+            currentEmotion={currentEmotion}
+            showSuggestion={false}
+          />
+        </Card>
 
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
