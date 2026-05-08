@@ -1,15 +1,8 @@
 /**
- * CodeEditor component using Monaco Editor.
- * Provides a LeetCode-style code editing experience with syntax highlighting,
- * auto-completion, and language support.
- * 
- * Integrates with the Emotion-Adaptive E-Learning System for real-time
- * code analysis and adaptive feedback.
+ * CodeEditor component fallback using a textarea.
+ * This keeps the coding flow usable when Monaco is unavailable.
  */
 
-import { useRef, useCallback } from "react";
-import Editor, { OnMount, OnChange } from "@monaco-editor/react";
-import type { editor } from "monaco-editor";
 import type { ProgrammingLanguage } from "@/data/codingProblems";
 
 interface CodeEditorProps {
@@ -33,80 +26,42 @@ interface CodeEditorProps {
   showMinimap?: boolean;
 }
 
-/**
- * Monaco language mapping
- */
-const languageMap: Record<ProgrammingLanguage, string> = {
-  javascript: "javascript",
-  python: "python",
-  typescript: "typescript",
-};
-
 export function CodeEditor({
   value,
   onChange,
   language,
   readOnly = false,
-  height = "400px",
+  height = "100%",
   theme = "vs-dark",
   fontSize = 14,
   showLineNumbers = true,
   showMinimap = false,
 }: CodeEditorProps) {
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  void language;
+  void showLineNumbers;
+  void showMinimap;
 
-  const handleEditorDidMount: OnMount = useCallback((editor) => {
-    editorRef.current = editor;
-    // Focus editor on mount
-    editor.focus();
-  }, []);
-
-  const handleChange: OnChange = useCallback(
-    (newValue) => {
-      onChange(newValue || "");
-    },
-    [onChange]
-  );
+  const isDark = theme === "vs-dark";
 
   return (
-    <div className="rounded-lg overflow-hidden border border-border">
-      <Editor
-        height={height}
-        language={languageMap[language]}
+    <div
+      className={`h-full w-full min-h-0 rounded-lg overflow-hidden border border-border ${
+        isDark ? "bg-[#1e1e1e]" : "bg-background"
+      }`}
+      style={{ height }}
+    >
+      <textarea
         value={value}
-        theme={theme}
-        onChange={handleChange}
-        onMount={handleEditorDidMount}
-        options={{
-          readOnly,
-          fontSize,
-          lineNumbers: showLineNumbers ? "on" : "off",
-          minimap: { enabled: showMinimap },
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          tabSize: language === "python" ? 4 : 2,
-          wordWrap: "on",
-          padding: { top: 12, bottom: 12 },
-          suggestOnTriggerCharacters: true,
-          quickSuggestions: true,
-          folding: true,
-          foldingHighlight: true,
-          bracketPairColorization: { enabled: true },
-          renderLineHighlight: "all",
-          cursorBlinking: "smooth",
-          smoothScrolling: true,
-          contextmenu: true,
-          formatOnPaste: true,
-          formatOnType: true,
-        }}
-        loading={
-          <div className="flex items-center justify-center h-full bg-[#1e1e1e] text-white">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin" />
-              <span>Loading editor...</span>
-            </div>
-          </div>
-        }
+        onChange={(event) => onChange(event.target.value)}
+        readOnly={readOnly}
+        placeholder="Write your code here..."
+        spellCheck={false}
+        className={`block h-full w-full min-h-0 resize-none overflow-auto p-3 font-mono leading-6 outline-none ${
+          isDark
+            ? "bg-transparent text-white placeholder:text-zinc-500"
+            : "bg-transparent text-foreground placeholder:text-muted-foreground"
+        }`}
+        style={{ fontSize }}
       />
     </div>
   );

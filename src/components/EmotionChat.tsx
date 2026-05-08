@@ -44,153 +44,48 @@ export default function EmotionChat({ onEmotionDetected, compact = false }: Emot
     setInputText('');
     setIsProcessing(true);
 
-    // GPT API Integration using OpenRouter
-    // IMPORTANT: Get your free API key from https://openrouter.ai/keys
-    // Sign up for free account and create a new API key
-    const API_KEY = '';
-    const API_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
-    
-    // Try models in order - prioritize free and reliable models
-    const modelsToTry = [
-      'google/gemini-flash-1.5:free',
-      'meta-llama/llama-3.2-3b-instruct:free',
-      'microsoft/phi-3-mini-128k-instruct:free',
-      'openai/gpt-3.5-turbo',
-      'anthropic/claude-3-haiku',
-    ];
-
     try {
-      for (const model of modelsToTry) {
-        try {
-          console.log(`Trying model: ${model}`);
-          
-          const response = await fetch(API_ENDPOINT, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${API_KEY}`,
-              'HTTP-Referer': window.location.origin || '',
-              'X-Title': 'Face Mood Chat',
-            },
-            body: JSON.stringify({
-              model: model,
-              messages: [
-                {
-                  role: 'system',
-                  content: 'You are a helpful and knowledgeable assistant. Answer questions accurately and provide useful information. Be conversational and helpful.',
-                },
-                {
-                  role: 'user',
-                  content: inputText,
-                },
-              ],
-              max_tokens: 500,
-              temperature: 0.7,
-            }),
-          });
+      const apiBase =
+        (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8000';
+      const response = await fetch(`${apiBase}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userMessage.text,
+          emotion: userEmotion,
+        }),
+      });
 
-          console.log(`Response status: ${response.status}`);
-
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
-            console.error(`Model ${model} failed:`, errorMessage);
-            
-            // If it's a payment error for free model, try next
-            if (response.status === 402 && model.includes(':free')) {
-              console.log(`Free model requires payment, trying next...`);
-              continue;
-            }
-            
-            // If it's the last model, throw error
-            if (model === modelsToTry[modelsToTry.length - 1]) {
-              throw new Error(`All models failed. Last error: ${errorMessage}`);
-            }
-            
-            // Try next model
-            continue;
-          }
-
-          const data = await response.json();
-          console.log('API Response:', data);
-          
-          // Extract response from different possible structures
-          let aiResponse = '';
-          if (data.choices?.[0]?.message?.content) {
-            aiResponse = data.choices[0].message.content;
-          } else if (data.message?.content) {
-            aiResponse = data.message.content;
-          } else if (data.content) {
-            aiResponse = data.content;
-          }
-
-          if (!aiResponse || aiResponse.trim().length === 0) {
-            console.warn('Empty response, trying next model...');
-            continue;
-          }
-
-          // Success! Return the response
-          console.log('✅ API Success:', aiResponse.substring(0, 100));
-          const aiMessage: ChatMessage = {
-            id: (Date.now() + 1).toString(),
-            text: aiResponse.trim(),
-            emotion: 'neutral',
-            isUser: false,
-            timestamp: Date.now(),
-          };
-          setMessages(prev => [...prev, aiMessage]);
-          return; // Success, exit
-          
-        } catch (error) {
-          console.error(`Error with ${model}:`, error);
-          
-          // If last model, throw to outer catch
-          if (model === modelsToTry[modelsToTry.length - 1]) {
-            throw error;
-          }
-          // Otherwise continue to next model
-          continue;
-        }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = data?.detail || `HTTP ${response.status}`;
+        throw new Error(detail);
       }
-    
-    } catch (error) {
-      console.error('All API models failed:', error);
-      
-      // Show helpful error message to user
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      let userMessage = '';
-      
-      if (errorMessage.includes('User not found') || errorMessage.includes('401') || errorMessage.includes('invalid')) {
-        userMessage = `❌ Your API key is invalid or expired. 
 
-To fix this:
-1. Go to https://openrouter.ai/keys
-2. Sign up for a free account (if you don't have one)
-3. Create a new API key
-4. Replace the API_KEY in src/components/EmotionChat.tsx (line 46)
-
-You'll get $5 free credits when you sign up!`;
-      } else if (errorMessage.includes('402') || errorMessage.includes('credits')) {
-        userMessage = `❌ Your OpenRouter account has no credits. 
-
-To fix this:
-1. Go to https://openrouter.ai/credits
-2. Add credits to your account
-3. Or use free models that don't require credits`;
-      } else if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
-        userMessage = `⏱️ Rate limit exceeded. Please wait a moment and try again.`;
-      } else {
-        userMessage = `❌ Connection error: ${errorMessage}
-
-Please check:
-- Your internet connection
-- Your API key at https://openrouter.ai/keys
-- Browser console (F12) for more details`;
+      const aiReply = typeof data.reply === 'string' ? data.reply.trim() : '';
+      if (!aiReply) {
+        throw new Error('Received an empty response from the assistant.');
       }
-      
+
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        text: userMessage,
+        text: aiReply,
+        emotion: 'neutral',
+        isUser: false,
+        timestamp: Date.now(),
+      };
+      setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Chat request failed:', error);
+      const rawErrorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = rawErrorMessage.includes('Failed to fetch')
+        ? 'Unable to reach backend at http://localhost:8000. Check backend server/CORS and URL.'
+        : rawErrorMessage;
+      const aiMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        text: `Sorry, I couldn't respond right now. ${errorMessage}`,
         emotion: 'neutral',
         isUser: false,
         timestamp: Date.now(),
@@ -263,10 +158,13 @@ Please check:
         {isProcessing && (
           <div className="flex justify-start">
             <div className="bg-card border-2 border-border rounded-2xl px-4 py-3">
-              <div className="flex space-x-2">
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground">typing...</span>
+                <div className="flex space-x-2">
                 <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
                 <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
                 <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                </div>
               </div>
             </div>
           </div>
@@ -297,7 +195,7 @@ Please check:
         {!compact && (
         <div className="mt-4 p-3 bg-muted rounded-lg">
           <p className="text-xs text-muted-foreground">
-            <strong>AI Chat Integration:</strong> Powered by OpenRouter API with GPT models.
+            <strong>AI Chat Integration:</strong> Responses are served securely through the backend proxy.
           </p>
         </div>
         )}

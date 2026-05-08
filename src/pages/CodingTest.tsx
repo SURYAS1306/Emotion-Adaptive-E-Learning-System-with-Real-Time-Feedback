@@ -12,7 +12,7 @@
  * to provide adaptive learning during coding challenges.
  */
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
   ResizableHandle,
@@ -66,6 +66,7 @@ import { useEmotionStream } from "@/domain/emotion/useEmotionStream";
 import EmotionCamera from "@/components/EmotionCamera";
 import CodeEditor from "@/components/CodeEditor";
 import EmotionMetrics, { getSuggestedDifficulty } from "@/components/EmotionMetrics";
+import HintPopup from "@/components/HintPopup";
 import {
   codingProblems,
   type CodingProblem,
@@ -209,6 +210,8 @@ export default function CodingTest() {
   const [showSolution, setShowSolution] = useState(false);
   const [activeTab, setActiveTab] = useState<"description" | "solution">("description");
   const [bottomTab, setBottomTab] = useState<"testcases" | "results">("testcases");
+  const [showHintPopup, setShowHintPopup] = useState(false);
+  const [hintPopupMessage, setHintPopupMessage] = useState("");
   
   // Execution state
   const [isRunning, setIsRunning] = useState(false);
@@ -222,6 +225,17 @@ export default function CodingTest() {
   
   // Stats
   const [wrongAttempts, setWrongAttempts] = useState(0);
+  const previousEmotionRef = useRef<EmotionType>("neutral");
+  const lastHintAtRef = useRef(0);
+  const hintMessageIndexRef = useRef(0);
+
+  const hintMessages = useMemo(
+    () => [
+      "Need a hint? Try breaking the problem into smaller parts.",
+      "You're close. Think about edge cases.",
+    ],
+    []
+  );
 
   // Current problem
   const currentProblem = useMemo(
@@ -275,6 +289,35 @@ export default function CodingTest() {
       setShowHints(true);
     }
   }, [suggestHint, showHints, currentProblem]);
+
+  // Show non-intrusive coding hint popup for sad/surprised transitions.
+  useEffect(() => {
+    const previousEmotion = previousEmotionRef.current;
+    const isTargetEmotion = currentEmotion === "sad" || currentEmotion === "surprised";
+    const emotionChanged = currentEmotion !== previousEmotion;
+    const now = Date.now();
+    const cooldownMs = 5000;
+
+    if (isTargetEmotion && emotionChanged && now - lastHintAtRef.current >= cooldownMs) {
+      const nextIndex = hintMessageIndexRef.current % hintMessages.length;
+      setHintPopupMessage(hintMessages[nextIndex]);
+      setShowHintPopup(true);
+      hintMessageIndexRef.current += 1;
+      lastHintAtRef.current = now;
+    }
+
+    previousEmotionRef.current = currentEmotion;
+  }, [currentEmotion, hintMessages]);
+
+  useEffect(() => {
+    if (!showHintPopup) return;
+
+    const timeout = window.setTimeout(() => {
+      setShowHintPopup(false);
+    }, 6000);
+
+    return () => window.clearTimeout(timeout);
+  }, [showHintPopup]);
 
   const handleEmotionDetected = (emotion: EmotionType) => {
     setCurrentEmotion(emotion);
@@ -741,7 +784,7 @@ export default function CodingTest() {
             <ResizablePanelGroup direction="vertical">
               {/* Code editor */}
               <ResizablePanel defaultSize={65} minSize={30}>
-                <div className="h-full flex flex-col">
+                <div className="h-full flex flex-col relative">
                   <div className="h-10 border-b flex items-center justify-between px-3">
                     <div className="flex items-center gap-2">
                       <Code2 className="h-4 w-4" />
@@ -758,6 +801,14 @@ export default function CodingTest() {
                       </Tooltip>
                     </div>
                   </div>
+                  {showHintPopup && (
+                    <div className="absolute right-3 top-12 z-20">
+                      <HintPopup
+                        message={hintPopupMessage}
+                        onClose={() => setShowHintPopup(false)}
+                      />
+                    </div>
+                  )}
                   <div className="flex-1">
                     <CodeEditor
                       value={code}

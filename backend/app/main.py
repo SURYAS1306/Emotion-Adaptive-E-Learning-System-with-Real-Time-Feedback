@@ -15,17 +15,46 @@ You can extend the data model or move heavy ML workloads here in future work.
 
 import asyncio
 import json
+import os
 import sqlite3
+import urllib.error
+import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "emotion_learning.db"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODELS = [
+  "meta-llama/llama-3.2-3b-instruct:free",
+  "microsoft/phi-3-mini-128k-instruct:free",
+  "openai/gpt-3.5-turbo",
+]
+
+
+def load_backend_env() -> None:
+  """
+  Lightweight .env loader for backend-only secrets.
+  Keeps API keys out of the frontend bundle.
+  """
+  env_path = BASE_DIR / ".env"
+  if not env_path.exists():
+    return
+
+  for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+      continue
+    key, value = line.split("=", 1)
+    key = key.strip()
+    value = value.strip().strip("\"'")
+    if key and key not in os.environ:
+      os.environ[key] = value
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +147,15 @@ class LearningEvent(BaseModel):
   mode: str
 
 
+class ChatRequest(BaseModel):
+  message: str = Field(min_length=1)
+  emotion: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+  reply: str
+
+
 # ---------------------------------------------------------------------------
 # FastAPI application
 # ---------------------------------------------------------------------------
@@ -128,7 +166,6 @@ app = FastAPI(title="Emotion-Adaptive E-Learning Backend", version="0.1.0")
 app.add_middleware(
   CORSMiddleware,
   allow_origins=["*"],
-  allow_credentials=True,
   allow_methods=["*"],
   allow_headers=["*"],
 )
@@ -136,12 +173,72 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def on_startup() -> None:
+  load_backend_env()
   init_db()
 
 
 @app.get("/api/health")
 async def health() -> Dict[str, Any]:
   return {"status": "ok"}
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest) -> ChatResponse:
+  api_key = os.getenv("OPENROUTER_API_KEY")
+  if not api_key:
+    raise HTTPException(
+      status_code=500,
+      detail="Server is missing OPENROUTER_API_KEY in backend .env",
+    )
+
+  system_prompt = (
+    "You are a supportive coding tutor. Keep responses concise and practical."
+  )
+  if request.emotion:
+    system_prompt += (
+      f" The user's detected emotion is '{request.emotion}'. Respond empathetically."
+    )
+
+  last_error = "Unknown OpenRouter error"
+  for model in OPENROUTER_MODELS:
+    payload = {
+      "model": model,
+      "messages": [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": request.message},
+      ],
+      "max_tokens": 500,
+      "temperature": 0.7,
+    }
+
+    req = urllib.request.Request(
+      OPENROUTER_API_URL,
+      data=json.dumps(payload).encode("utf-8"),
+      headers={
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "HTTP-Referer": "http://localhost:8080",
+        "X-Title": "Emotion-Adaptive-E-Learning-System",
+      },
+      method="POST",
+    )
+
+    try:
+      with urllib.request.urlopen(req, timeout=25) as response:
+        raw = response.read().decode("utf-8")
+      data = json.loads(raw)
+      reply = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+      if reply:
+        return ChatResponse(reply=reply)
+      last_error = f"Empty response for model {model}"
+    except urllib.error.HTTPError as exc:
+      detail = exc.read().decode("utf-8") if exc.fp else str(exc)
+      last_error = f"Model {model} failed: {detail}"
+      continue
+    except urllib.error.URLError:
+      raise HTTPException(status_code=502, detail="Failed to reach OpenRouter")
+
+  raise HTTPException(status_code=502, detail=f"OpenRouter error: {last_error}")
 
 
 @app.post("/api/emotion/log")
